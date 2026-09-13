@@ -1,0 +1,129 @@
+name: Discord Beta Release Notification
+
+on:
+  release:
+    types: [published]
+
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  notify-discord:
+    name: Notify Glide Labs
+    if: ${{ github.event_name == 'workflow_dispatch' || github.event.release.prerelease == true }}
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Post Glide beta release to Discord
+        env:
+          DISCORD_WEBHOOK: ${{ secrets.DISCORD_BETA_WEBHOOK }}
+        run: |
+          python <<'PY'
+          import json
+          import os
+          import urllib.request
+
+          webhook = os.environ["DISCORD_WEBHOOK"]
+          event_name = os.environ["GITHUB_EVENT_NAME"]
+
+          if event_name == "workflow_dispatch":
+              payload = {
+                  "embeds": [
+                      {
+                          "title": "🧪 Glide Beta automation is working",
+                          "description": (
+                              "GitHub Actions successfully connected to "
+                              "Glide Labs **#beta-downloads**.\n\n"
+                              "Future GitHub prereleases will be posted here automatically."
+                          ),
+                          "color": 47103,
+                          "fields": [
+                              {
+                                  "name": "Status",
+                                  "value": "Beta webhook connected",
+                                  "inline": True
+                              },
+                              {
+                                  "name": "Repository",
+                                  "value": os.environ["GITHUB_REPOSITORY"],
+                                  "inline": True
+                              }
+                          ],
+                          "footer": {
+                              "text": "Glide Labs • Beta Release Automation"
+                          }
+                      }
+                  ]
+              }
+
+          else:
+              with open(os.environ["GITHUB_EVENT_PATH"], "r", encoding="utf-8") as f:
+                  event = json.load(f)
+
+              release = event["release"]
+
+              title = release.get("name") or release.get("tag_name") or "New Glide Beta"
+              tag = release.get("tag_name") or "Unknown"
+              notes = (release.get("body") or "No beta release notes were provided.").strip()
+
+              if len(notes) > 3500:
+                  notes = notes[:3497] + "..."
+
+              payload = {
+                  "embeds": [
+                      {
+                          "title": f"🧪 GLIDE BETA • {title}",
+                          "url": release["html_url"],
+                          "description": notes,
+                          "color": 47103,
+                          "fields": [
+                              {
+                                  "name": "Beta Version",
+                                  "value": f"`{tag}`",
+                                  "inline": True
+                              },
+                              {
+                                  "name": "Release Type",
+                                  "value": "Prerelease / Beta",
+                                  "inline": True
+                              },
+                              {
+                                  "name": "Published by",
+                                  "value": release["author"]["login"],
+                                  "inline": True
+                              },
+                              {
+                                  "name": "⚠️ Testing Notice",
+                                  "value": (
+                                      "This is a test build and may contain unfinished "
+                                      "features or bugs. Please report beta-specific "
+                                      "issues in **#beta-bug-reports**."
+                                  ),
+                                  "inline": False
+                              }
+                          ],
+                          "footer": {
+                              "text": "Glide Labs • Official Beta Build"
+                          },
+                          "timestamp": release.get("published_at")
+                      }
+                  ]
+              }
+
+          data = json.dumps(payload).encode("utf-8")
+
+          request = urllib.request.Request(
+              webhook,
+              data=data,
+              headers={
+                  "Content-Type": "application/json",
+                  "User-Agent": "Glide-GitHub-Actions"
+              },
+              method="POST"
+          )
+
+          with urllib.request.urlopen(request) as response:
+              print(f"Discord responded with HTTP {response.status}")
+          PY
