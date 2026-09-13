@@ -76,23 +76,29 @@ jobs:
                   ]
               }
 
-              announcement_payload = {
-                  "embeds": [
-                      {
-                          "title": "📢 Glide Beta announcement automation is working",
-                          "description": (
-                              "GitHub Actions is now connected to "
-                              "**#beta-announcements**.\n\n"
-                              "When a new Glide prerelease is published, "
-                              "testers will automatically be notified here."
-                          ),
-                          "color": 47103,
-                          "footer": {
-                              "text": "Glide Labs • Beta Announcements"
-                          }
-                      }
-                  ]
-              }
+             announcement_payload = {
+    "content": "<@&1547748860888092784>",
+    "allowed_mentions": {
+        "roles": ["1547748860888092784"]
+    },
+    "embeds": [
+        {
+            "title": f"🧪 New Glide Beta Available • {tag}",
+            "url": url,
+            "description": (
+                "A new Glide beta build is now available for testing.\n\n"
+                "📥 Get the build and full release notes in **#beta-downloads**.\n"
+                "🐛 Report beta-specific problems in **#beta-bug-reports**.\n"
+                "💬 Discuss the build in **#beta-discussion**."
+            ),
+            "color": 47103,
+            "footer": {
+                "text": "Glide Labs • Beta Update"
+            },
+            "timestamp": release.get("published_at")
+        }
+    ]
+}
 
           else:
               with open(os.environ["GITHUB_EVENT_PATH"], "r", encoding="utf-8") as f:
