@@ -18,18 +18,36 @@ jobs:
     steps:
       - name: Post Glide beta release to Discord
         env:
-          DISCORD_WEBHOOK: ${{ secrets.DISCORD_BETA_WEBHOOK }}
+          DISCORD_BETA_WEBHOOK: ${{ secrets.DISCORD_BETA_WEBHOOK }}
+          DISCORD_BETA_ANNOUNCEMENT_WEBHOOK: ${{ secrets.DISCORD_BETA_ANNOUNCEMENT_WEBHOOK }}
         run: |
           python <<'PY'
           import json
           import os
           import urllib.request
 
-          webhook = os.environ["DISCORD_WEBHOOK"]
+          download_webhook = os.environ["DISCORD_BETA_WEBHOOK"]
+          announcement_webhook = os.environ["DISCORD_BETA_ANNOUNCEMENT_WEBHOOK"]
           event_name = os.environ["GITHUB_EVENT_NAME"]
 
+          def post(webhook, payload):
+              data = json.dumps(payload).encode("utf-8")
+
+              request = urllib.request.Request(
+                  webhook,
+                  data=data,
+                  headers={
+                      "Content-Type": "application/json",
+                      "User-Agent": "Glide-GitHub-Actions"
+                  },
+                  method="POST"
+              )
+
+              with urllib.request.urlopen(request) as response:
+                  print(f"Discord responded with HTTP {response.status}")
+
           if event_name == "workflow_dispatch":
-              payload = {
+              download_payload = {
                   "embeds": [
                       {
                           "title": "🧪 Glide Beta automation is working",
@@ -42,7 +60,7 @@ jobs:
                           "fields": [
                               {
                                   "name": "Status",
-                                  "value": "Beta webhook connected",
+                                  "value": "Beta download webhook connected",
                                   "inline": True
                               },
                               {
@@ -58,6 +76,24 @@ jobs:
                   ]
               }
 
+              announcement_payload = {
+                  "embeds": [
+                      {
+                          "title": "📢 Glide Beta announcement automation is working",
+                          "description": (
+                              "GitHub Actions is now connected to "
+                              "**#beta-announcements**.\n\n"
+                              "When a new Glide prerelease is published, "
+                              "testers will automatically be notified here."
+                          ),
+                          "color": 47103,
+                          "footer": {
+                              "text": "Glide Labs • Beta Announcements"
+                          }
+                      }
+                  ]
+              }
+
           else:
               with open(os.environ["GITHUB_EVENT_PATH"], "r", encoding="utf-8") as f:
                   event = json.load(f)
@@ -67,15 +103,16 @@ jobs:
               title = release.get("name") or release.get("tag_name") or "New Glide Beta"
               tag = release.get("tag_name") or "Unknown"
               notes = (release.get("body") or "No beta release notes were provided.").strip()
+              url = release["html_url"]
 
               if len(notes) > 3500:
                   notes = notes[:3497] + "..."
 
-              payload = {
+              download_payload = {
                   "embeds": [
                       {
                           "title": f"🧪 GLIDE BETA • {title}",
-                          "url": release["html_url"],
+                          "url": url,
                           "description": notes,
                           "color": 47103,
                           "fields": [
@@ -112,18 +149,29 @@ jobs:
                   ]
               }
 
-          data = json.dumps(payload).encode("utf-8")
+              announcement_payload = {
+                  "embeds": [
+                      {
+                          "title": f"🧪 New Glide Beta Available • {tag}",
+                          "url": url,
+                          "description": (
+                              "A new Glide beta build is now available for testing.\n\n"
+                              "📥 Get the build and full release notes in **#beta-downloads**.\n"
+                              "🐛 Report beta-specific problems in **#beta-bug-reports**.\n"
+                              "💬 Discuss the build in **#beta-discussion**."
+                          ),
+                          "color": 47103,
+                          "footer": {
+                              "text": "Glide Labs • Beta Update"
+                          },
+                          "timestamp": release.get("published_at")
+                      }
+                  ]
+              }
 
-          request = urllib.request.Request(
-              webhook,
-              data=data,
-              headers={
-                  "Content-Type": "application/json",
-                  "User-Agent": "Glide-GitHub-Actions"
-              },
-              method="POST"
-          )
+          print("Posting beta download notification...")
+          post(download_webhook, download_payload)
 
-          with urllib.request.urlopen(request) as response:
-              print(f"Discord responded with HTTP {response.status}")
+          print("Posting beta announcement...")
+          post(announcement_webhook, announcement_payload)
           PY
