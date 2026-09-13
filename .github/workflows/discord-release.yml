@@ -18,41 +18,65 @@ jobs:
     steps:
       - name: Post Glide release to Discord
         env:
-          DISCORD_WEBHOOK: ${{ secrets.DISCORD_RELEASE_WEBHOOK }}
+          DISCORD_RELEASE_WEBHOOK: ${{ secrets.DISCORD_RELEASE_WEBHOOK }}
+          DISCORD_ANNOUNCEMENT_WEBHOOK: ${{ secrets.DISCORD_ANNOUNCEMENT_WEBHOOK }}
         run: |
           python <<'PY'
           import json
           import os
           import urllib.request
 
-          webhook = os.environ["DISCORD_WEBHOOK"]
+          release_webhook = os.environ["DISCORD_RELEASE_WEBHOOK"]
+          announcement_webhook = os.environ["DISCORD_ANNOUNCEMENT_WEBHOOK"]
           event_name = os.environ["GITHUB_EVENT_NAME"]
 
+          RELEASE_ROLE_ID = "1547748230199120004"
+
+          def post(webhook, payload):
+              data = json.dumps(payload).encode("utf-8")
+
+              request = urllib.request.Request(
+                  webhook,
+                  data=data,
+                  headers={
+                      "Content-Type": "application/json",
+                      "User-Agent": "Glide-GitHub-Actions"
+                  },
+                  method="POST"
+              )
+
+              with urllib.request.urlopen(request) as response:
+                  print(f"Discord responded with HTTP {response.status}")
+
           if event_name == "workflow_dispatch":
-              payload = {
+              release_payload = {
                   "embeds": [
                       {
                           "title": "✅ Glide release automation is working",
                           "description": (
                               "GitHub Actions successfully connected to the "
-                              "official Glide **#releases** Discord channel.\n\n"
-                              "Future stable GitHub releases will be posted here automatically."
+                              "official Glide **#releases** channel."
                           ),
                           "color": 47103,
-                          "fields": [
-                              {
-                                  "name": "Status",
-                                  "value": "Release webhook connected",
-                                  "inline": True
-                              },
-                              {
-                                  "name": "Repository",
-                                  "value": os.environ["GITHUB_REPOSITORY"],
-                                  "inline": True
-                              }
-                          ],
                           "footer": {
                               "text": "Glide • Release Automation"
+                          }
+                      }
+                  ]
+              }
+
+              announcement_payload = {
+                  "embeds": [
+                      {
+                          "title": "📢 Glide announcement automation is working",
+                          "description": (
+                              "GitHub Actions successfully connected to "
+                              "**#announcements**.\n\n"
+                              "Real stable releases will notify subscribed members here."
+                          ),
+                          "color": 47103,
+                          "footer": {
+                              "text": "Glide • Announcements"
                           }
                       }
                   ]
@@ -67,16 +91,16 @@ jobs:
               title = release.get("name") or release.get("tag_name") or "New Glide Release"
               tag = release.get("tag_name") or "Unknown"
               notes = (release.get("body") or "No release notes were provided.").strip()
+              url = release["html_url"]
 
-              # Keep comfortably within Discord's embed description limit.
               if len(notes) > 3500:
                   notes = notes[:3497] + "..."
 
-              payload = {
+              release_payload = {
                   "embeds": [
                       {
                           "title": f"🚀 {title}",
-                          "url": release["html_url"],
+                          "url": url,
                           "description": notes,
                           "color": 47103,
                           "fields": [
@@ -104,18 +128,33 @@ jobs:
                   ]
               }
 
-          data = json.dumps(payload).encode("utf-8")
+              announcement_payload = {
+                  "content": f"<@&{RELEASE_ROLE_ID}>",
+                  "allowed_mentions": {
+                      "roles": [RELEASE_ROLE_ID]
+                  },
+                  "embeds": [
+                      {
+                          "title": f"🚀 New Glide Release • {tag}",
+                          "url": url,
+                          "description": (
+                              "A new stable version of Glide is now available.\n\n"
+                              "📦 Download it and read the full release notes in **#releases**.\n"
+                              "🛠 Need help? Visit **#help-and-support**.\n"
+                              "🐛 Found a problem? Check **#known-issues** first."
+                          ),
+                          "color": 47103,
+                          "footer": {
+                              "text": "Glide • Stable Release"
+                          },
+                          "timestamp": release.get("published_at")
+                      }
+                  ]
+              }
 
-          request = urllib.request.Request(
-              webhook,
-              data=data,
-              headers={
-                  "Content-Type": "application/json",
-                  "User-Agent": "Glide-GitHub-Actions"
-              },
-              method="POST"
-          )
+          print("Posting stable release notification...")
+          post(release_webhook, release_payload)
 
-          with urllib.request.urlopen(request) as response:
-              print(f"Discord responded with HTTP {response.status}")
+          print("Posting stable announcement...")
+          post(announcement_webhook, announcement_payload)
           PY
